@@ -5,6 +5,7 @@ export const INITIAL_USER: User = {
   role: 'Regional Operations',
   office: 'Cairo HQ',
   country: 'EG',
+  email: 'ahmed@example.com'
 };
 
 export const TEAMS = [
@@ -41,6 +42,7 @@ export const INITIAL_TASKS: Task[] = [
     carry: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    creatorId: 'mock-admin'
   },
   {
     id: 't2',
@@ -56,6 +58,7 @@ export const INITIAL_TASKS: Task[] = [
     carry: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    creatorId: 'mock-admin'
   },
 ];
 
@@ -73,5 +76,6 @@ export const INITIAL_HANDOVERS: Handover[] = [
     watchouts: 'Please prioritize the Tashas audit as the client is chasing.',
     taskIds: ['t1'],
     createdAt: new Date().toISOString(),
+    creatorId: 'mock-admin'
   },
 ];

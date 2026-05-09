@@ -1,0 +1,79 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function isVerified() { return request.auth.token.email_verified == true; }
+
+    // --- Validation Blueprints ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['name', 'email']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && data.email.size() > 0 && data.email.size() <= 100;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['title', 'status', 'priority', 'createdAt', 'updatedAt', 'creatorId']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.status in ['Backlog', 'In Progress', 'Waiting', 'Blocked', 'Done'] &&
+             data.priority in ['Low', 'Medium', 'High'] &&
+             data.createdAt is string &&
+             data.updatedAt is string &&
+             data.creatorId is string;
+    }
+
+    function isValidHandover(data) {
+      return data.keys().hasAll(['date', 'fromShift', 'toShift', 'status', 'createdAt', 'creatorId']) &&
+             data.date is string &&
+             data.fromShift in ['Morning', 'Mid', 'Night'] &&
+             data.toShift in ['Morning', 'Mid', 'Night'] &&
+             data.status in ['Pending', 'Acknowledged'] &&
+             data.createdAt is string &&
+             data.creatorId is string;
+    }
+
+    // --- Collections ---
+
+    // Users
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'office', 'country']);
+    }
+
+    // Tasks
+    match /tasks/{taskId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidTask(incoming()) && incoming().creatorId == request.auth.uid && isValidId(taskId);
+      allow update: if isSignedIn() && isValidTask(incoming()) && (
+        // Creator can update everything
+        (existing().creatorId == request.auth.uid && incoming().creatorId == request.auth.uid) ||
+        // Others can only update status
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().creatorId == existing().creatorId)
+      );
+      allow delete: if isSignedIn() && existing().creatorId == request.auth.uid;
+    }
+
+    // Handovers
+    match /handovers/{handoverId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidHandover(incoming()) && incoming().creatorId == request.auth.uid && isValidId(handoverId);
+      allow update: if isSignedIn() && isValidHandover(incoming()) && (
+        (existing().creatorId == request.auth.uid && incoming().creatorId == request.auth.uid) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'ackAt']) && incoming().creatorId == existing().creatorId)
+      );
+    }
+  }
+}

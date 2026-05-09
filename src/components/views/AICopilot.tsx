@@ -7,14 +7,13 @@ import { GoogleGenAI } from '@google/genai';
 interface AICopilotProps {
   tasks: Task[];
   handovers: Handover[];
+  messages: {role: 'user' | 'assistant', content: string}[];
+  setMessages: React.Dispatch<React.SetStateAction<{role: 'user' | 'assistant', content: string}[]>>;
 }
 
-export default function AICopilot({ tasks, handovers }: AICopilotProps) {
+export default function AICopilot({ tasks, handovers, messages, setMessages }: AICopilotProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [messages, setMessages] = useState<{role: 'user' | 'assistant', content: string}[]>([
-    { role: 'assistant', content: 'Operational intelligence is ready. How can I assist with your shift flow or risk synthesis today?' }
-  ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   

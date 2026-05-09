@@ -1,21 +1,25 @@
 import React, { useState } from 'react';
 import { Task, Status, Priority, Shift } from '../../types';
-import { Search, Filter, MoreHorizontal, ArrowUpDown, Clock, AlertCircle, CheckCircle2, Plus, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, ArrowUpDown, Clock, AlertCircle, CheckCircle2, Plus, ChevronDown, ChevronUp, RefreshCw, Trash2, UserPlus, CheckSquare, Square, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import TaskModal from '../TaskModal';
+import { db, auth } from '../../lib/firebase';
+import { collection, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { TEAMS } from '../../constants';
 
 interface TaskBoardProps {
   tasks: Task[];
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
-export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
+export default function TaskBoard({ tasks }: TaskBoardProps) {
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortField, setSortField] = useState<keyof Task | 'title'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleSort = (field: keyof Task | 'title') => {
     if (sortField === field) {
@@ -30,7 +34,9 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
     (statusFilter === 'All' || t.status === statusFilter) &&
     (t.title.toLowerCase().includes(filter.toLowerCase()) || 
      t.owner.toLowerCase().includes(filter.toLowerCase()) || 
-     t.office.toLowerCase().includes(filter.toLowerCase()))
+     t.office.toLowerCase().includes(filter.toLowerCase()) ||
+     (t.country && t.country.toLowerCase().includes(filter.toLowerCase())) ||
+     (t.team && t.team.toLowerCase().includes(filter.toLowerCase())))
   );
 
   const sortedTasks = [...filteredTasks].sort((a, b) => {
@@ -43,35 +49,108 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
       valB = weights[b.priority as Priority] || 0;
     }
 
+    if (valA == null) valA = '';
+    if (valB == null) valB = '';
+
+    if (typeof valA === 'string') valA = valA.toLowerCase();
+    if (typeof valB === 'string') valB = valB.toLowerCase();
+
     if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
     if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
     return 0;
   });
 
-  const toggleStatus = (id: string) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === id) {
-        const statuses = Object.values(Status);
-        const currentIndex = statuses.indexOf(t.status);
-        const nextIndex = (currentIndex + 1) % statuses.length;
-        return { ...t, status: statuses[nextIndex], updatedAt: new Date().toISOString() };
-      }
-      return t;
-    }));
+  const toggleSelectAll = () => {
+    if (selectedIds.length === sortedTasks.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(sortedTasks.map(t => t.id));
+    }
   };
 
-  const handleSaveTask = (taskData: Partial<Task>) => {
-    const newTask: Task = {
-      ...(taskData as Task),
-      id: Math.random().toString(36).slice(2),
+  const toggleSelect = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleBulkStatus = async (status: Status) => {
+    setIsProcessing(true);
+    const batch = writeBatch(db);
+    selectedIds.forEach(id => {
+      const ref = doc(db, 'tasks', id);
+      batch.update(ref, { status, updatedAt: new Date().toISOString() });
+    });
+    await batch.commit();
+    setSelectedIds([]);
+    setIsProcessing(false);
+  };
+
+  const handleBulkPriority = async (priority: Priority) => {
+    setIsProcessing(true);
+    const batch = writeBatch(db);
+    selectedIds.forEach(id => {
+      const ref = doc(db, 'tasks', id);
+      batch.update(ref, { priority, updatedAt: new Date().toISOString() });
+    });
+    await batch.commit();
+    setSelectedIds([]);
+    setIsProcessing(false);
+  };
+
+  const handleBulkDelete = async () => {
+    if (window.confirm(`Are you sure you want to delete ${selectedIds.length} tasks?`)) {
+      setIsProcessing(true);
+      const batch = writeBatch(db);
+      selectedIds.forEach(id => {
+        const ref = doc(db, 'tasks', id);
+        batch.delete(ref);
+      });
+      await batch.commit();
+      setSelectedIds([]);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBulkAssign = async (owner: string) => {
+    setIsProcessing(true);
+    const batch = writeBatch(db);
+    selectedIds.forEach(id => {
+      const ref = doc(db, 'tasks', id);
+      batch.update(ref, { owner, updatedAt: new Date().toISOString() });
+    });
+    await batch.commit();
+    setSelectedIds([]);
+    setIsProcessing(false);
+  };
+
+  const toggleStatus = async (id: string, currentStatus: Status) => {
+    const statuses = Object.values(Status);
+    const currentIndex = statuses.indexOf(currentStatus);
+    const nextIndex = (currentIndex + 1) % statuses.length;
+    
+    const ref = doc(db, 'tasks', id);
+    await updateDoc(ref, { 
+      status: statuses[nextIndex], 
+      updatedAt: new Date().toISOString() 
+    });
+  };
+
+  const handleSaveTask = async (taskData: Partial<Task>) => {
+    if (!auth.currentUser) return;
+
+    await addDoc(collection(db, 'tasks'), {
+      ...taskData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      creatorId: auth.currentUser.uid,
       country: taskData.country || 'KSA',
-      team: taskData.team || 'Operations',
-      did: [],
-    } as Task;
-    
-    setTasks(prev => [newTask, ...prev]);
+      team: taskData.team || TEAMS[0],
+      status: taskData.status || Status.BACKLOG,
+      priority: taskData.priority || Priority.MEDIUM,
+      owner: taskData.owner || auth.currentUser.email
+    });
   };
 
   return (
@@ -126,22 +205,46 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-stone/50 border-b border-dawn">
+                <th className="px-6 py-4 w-10">
+                  <button 
+                    onClick={toggleSelectAll}
+                    className="flex items-center justify-center text-muted hover:text-citrus transition-colors"
+                  >
+                    {selectedIds.length > 0 && selectedIds.length === sortedTasks.length ? (
+                      <CheckSquare className="w-4 h-4" />
+                    ) : (
+                      <Square className="w-4 h-4" />
+                    )}
+                  </button>
+                </th>
                 <th 
                   onClick={() => handleSort('title')}
                   className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
                 >
                   <div className="flex items-center gap-1">
                     <span>Core Outcome</span>
-                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'title' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'title' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
                   </div>
                 </th>
                 <th 
-                  onClick={() => handleSort('owner')}
-                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                  onClick={() => handleSort('country')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group whitespace-nowrap"
                 >
                   <div className="flex items-center gap-1">
-                    <span>Identity</span>
-                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'owner' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                    <span>Country</span>
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'country' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
                   </div>
                 </th>
                 <th 
@@ -150,7 +253,43 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                 >
                   <div className="flex items-center gap-1">
                     <span>Region</span>
-                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'office' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'office' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('team')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Team</span>
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'team' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('owner')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Identity</span>
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'owner' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
                   </div>
                 </th>
                 <th 
@@ -159,7 +298,13 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                 >
                   <div className="flex items-center gap-1">
                     <span>Priority</span>
-                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'priority' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'priority' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
                   </div>
                 </th>
                 <th 
@@ -168,7 +313,13 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                 >
                   <div className="flex items-center gap-1">
                     <span>Current State</span>
-                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'status' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'status' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
                   </div>
                 </th>
                 <th 
@@ -177,7 +328,13 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                 >
                   <div className="flex items-center gap-1">
                     <span>Commitment</span>
-                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'due' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                    <div className="w-3 h-3 flex items-center justify-center">
+                      {sortField === 'due' ? (
+                        sortOrder === 'asc' ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-citrus" />
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100" />
+                      )}
+                    </div>
                   </div>
                 </th>
                 <th className="px-6 py-4"></th>
@@ -188,8 +345,17 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                 <React.Fragment key={task.id}>
                   <tr 
                     onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                    className={`group hover:bg-stone/30 transition-colors border-b border-dawn last:border-0 cursor-pointer ${expandedTaskId === task.id ? 'bg-stone/20' : ''}`}
+                    className={`group hover:bg-stone/30 transition-colors border-b border-dawn last:border-0 cursor-pointer ${expandedTaskId === task.id ? 'bg-stone/20' : ''} ${selectedIds.includes(task.id) ? 'bg-citrus/5' : ''}`}
                   >
+                    <td className="px-6 py-5" onClick={(e) => toggleSelect(e, task.id)}>
+                      <div className="flex items-center justify-center text-muted group-hover:text-citrus transition-colors">
+                        {selectedIds.includes(task.id) ? (
+                          <CheckSquare className="w-4 h-4 text-citrus" />
+                        ) : (
+                          <Square className="w-4 h-4 opacity-30 group-hover:opacity-100" />
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-5">
                       <div className="flex items-start gap-3">
                         <div className={`mt-1 flex-shrink-0 ${task.status === Status.DONE ? 'text-green-500' : 'text-dawn'}`}>
@@ -231,16 +397,26 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
-                         <div className="w-6 h-6 bg-dawn rounded-full flex items-center justify-center text-[10px] font-bold text-muted border border-white">
-                          {task.owner.split(' ').map(n => n[0]).join('')}
-                        </div>
-                        <span className="text-xs font-bold text-muted">{task.owner}</span>
+                        <span className="text-xs font-bold text-citrus bg-citrus/5 px-2 py-0.5 rounded border border-citrus/10">{task.country || 'N/A'}</span>
                       </div>
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
                         <span className="text-lg leading-none">🌍</span>
-                        <span className="text-xs font-bold text-muted">{task.office}</span>
+                        <span className="text-xs font-bold text-muted whitespace-nowrap">{task.office}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-muted whitespace-nowrap">{task.team || 'N/A'}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                         <div className="w-6 h-6 bg-dawn rounded-full flex items-center justify-center text-[10px] font-bold text-muted border border-white flex-shrink-0">
+                          {task.owner.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <span className="text-xs font-bold text-muted truncate max-w-[120px]">{task.owner}</span>
                       </div>
                     </td>
                     <td className="px-6 py-5">
@@ -254,7 +430,7 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                     </td>
                     <td className="px-6 py-5" onClick={(e) => e.stopPropagation()}>
                       <button 
-                        onClick={() => toggleStatus(task.id)}
+                        onClick={() => toggleStatus(task.id, task.status)}
                         className="group/status flex items-center gap-2 hover:bg-slate-soft p-1.5 rounded-lg transition-all"
                       >
                         <span className={`block w-1.5 h-1.5 rounded-full ${
@@ -280,7 +456,7 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
                   </tr>
                   {expandedTaskId === task.id && (
                     <tr className="bg-stone/10 border-b border-dawn">
-                      <td colSpan={7} className="px-16 py-6 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <td colSpan={10} className="px-16 py-6 animate-in fade-in slide-in-from-top-1 duration-200">
                         <div className="grid grid-cols-3 gap-12">
                           <div className="col-span-2 space-y-4">
                             <div>
@@ -358,6 +534,87 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
         onClose={() => setIsModalOpen(false)} 
         onSave={handleSaveTask}
       />
+
+      <AnimatePresence>
+        {selectedIds.length > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 px-6 py-4 bg-ink text-white rounded-2xl shadow-2xl flex items-center gap-8 border border-white/10 backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-3 pr-8 border-r border-white/10">
+              <span className="flex items-center justify-center w-6 h-6 bg-citrus text-white rounded-full text-[10px] font-black">
+                {selectedIds.length}
+              </span>
+              <span className="text-xs font-bold uppercase tracking-widest whitespace-nowrap">items highlighted</span>
+              <button 
+                onClick={() => setSelectedIds([])}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4 opacity-50" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="group relative">
+                <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest">
+                  Status
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-40 bg-white text-ink rounded-xl border border-dawn shadow-2xl overflow-hidden p-1">
+                  {Object.values(Status).map(s => (
+                    <button 
+                      key={s}
+                      onClick={() => handleBulkStatus(s)}
+                      className="w-full px-4 py-2 text-left hover:bg-stone text-[10px] font-bold uppercase tracking-widest transition-colors rounded-lg"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="group relative">
+                <button className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest">
+                  Priority
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                <div className="absolute bottom-full mb-2 left-0 hidden group-hover:block w-40 bg-white text-ink rounded-xl border border-dawn shadow-2xl overflow-hidden p-1">
+                  {Object.values(Priority).map(p => (
+                    <button 
+                      key={p}
+                      onClick={() => handleBulkPriority(p)}
+                      className="w-full px-4 py-2 text-left hover:bg-stone text-[10px] font-bold uppercase tracking-widest transition-colors rounded-lg"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button 
+                onClick={() => {
+                  const email = window.prompt('Enter owner email address:');
+                  if (email) handleBulkAssign(email);
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-white/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest"
+              >
+                <UserPlus className="w-3 h-3" />
+                Assign
+              </button>
+
+              <button 
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-red-500 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-white"
+              >
+                <Trash2 className="w-3 h-3" />
+                Discard
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

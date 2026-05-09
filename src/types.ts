@@ -35,6 +35,7 @@ export interface Task {
   dod?: string[];
   createdAt: string;
   updatedAt: string;
+  creatorId: string;
 }
 
 export interface Handover {
@@ -51,6 +52,7 @@ export interface Handover {
   taskIds: string[];
   createdAt: string;
   ackAt?: string;
+  creatorId: string;
 }
 
 export interface Office {
@@ -66,6 +68,7 @@ export interface User {
   role: string;
   office: string;
   country: string;
+  email: string;
 }
 
 export interface AppState {

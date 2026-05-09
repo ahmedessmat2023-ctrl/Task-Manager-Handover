@@ -1,15 +1,25 @@
 import React, { useState } from 'react';
 import { Handover, Task, Shift, Priority, Status } from '../../types';
-import { RefreshCw, Calendar, MapPin, User, AlertTriangle, Send, CheckCircle2, ChevronRight, Info } from 'lucide-react';
+import { RefreshCw, Calendar, MapPin, User, AlertTriangle, Send, CheckCircle2, ChevronRight, Info, Sparkles, Loader2 } from 'lucide-react';
+import { GoogleGenAI } from '@google/genai';
+import { db, auth } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface HandoverFlowProps {
   handovers: Handover[];
-  setHandovers: React.Dispatch<React.SetStateAction<Handover[]>>;
   tasks: Task[];
+  stats: {
+    openCount: number;
+    riskCount: number;
+    carryCount: number;
+    handoverCount: number;
+  };
+  aiInteractions: {role: 'user' | 'assistant', content: string}[];
 }
 
-export default function HandoverFlow({ handovers, setHandovers, tasks }: HandoverFlowProps) {
+export default function HandoverFlow({ handovers, tasks, stats, aiInteractions }: HandoverFlowProps) {
   const [step, setStep] = useState(1);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [newHo, setNewHo] = useState<Partial<Handover>>({
     fromShift: Shift.MORNING,
     toShift: Shift.MID,
@@ -23,9 +33,69 @@ export default function HandoverFlow({ handovers, setHandovers, tasks }: Handove
 
   const activeTasks = tasks.filter(t => newHo.taskIds?.includes(t.id));
 
-  const saveHandover = () => {
-    const fresh: Handover = {
-      id: Math.random().toString(36).slice(2),
+  const handleAIAnalysis = async () => {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'MY_GEMINI_API_KEY' || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const taskDetails = activeTasks.map(t => `- [${t.priority}] ${t.title}: ${t.details || 'No details'}`).join('\n');
+      const otherOpenTasks = tasks.filter(t => !newHo.taskIds?.includes(t.id) && t.status !== Status.DONE)
+        .map(t => `- [${t.priority}] ${t.title}`).join('\n');
+      
+      const recentInteractions = aiInteractions.slice(-3).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+      
+      const systemMetrics = `
+        System Status Metrics:
+        - Total Open Tasks: ${stats.openCount}
+        - High Risk Items: ${stats.riskCount}
+        - Carry-over Volume: ${stats.carryCount}
+        - Handover Backlog: ${stats.handoverCount}
+      `;
+
+      const prompt = `
+        You are an Operations Intelligence Assistant. Analyze the current operational state for a shift handover from ${newHo.fromShift} to ${newHo.toShift}.
+        
+        SELECTED HANDOVER TASKS:
+        ${taskDetails}
+        
+        OTHER RELEVANT OPEN TASKS:
+        ${otherOpenTasks || 'None'}
+        
+        ${systemMetrics}
+        
+        RECENT AI COPILOT INTERACTIONS (Context):
+        ${recentInteractions || 'No recent interactions'}
+        
+        Synthesize a list of critical watchouts and action items for the incoming team. 
+        Focus on high-priority items, potential blockers, and urgent deadlines.
+        Take into account the broader context of the system metrics and recent discussions.
+        Return a concise, professional operational note. Do not use markdown headers, use clear bullet points.
+      `;
+
+      const result = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt
+      });
+      
+      const text = result.text;
+      
+      if (text) {
+        setNewHo(prev => ({ ...prev, watchouts: text.trim() }));
+      }
+    } catch (error) {
+      console.error('Handover Analysis Failed:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const saveHandover = async () => {
+    if (!auth.currentUser) return;
+
+    const fresh: Partial<Handover> = {
       date: new Date().toISOString().split('T')[0],
       fromShift: newHo.fromShift as Shift,
       toShift: newHo.toShift as Shift,
@@ -37,8 +107,10 @@ export default function HandoverFlow({ handovers, setHandovers, tasks }: Handove
       watchouts: newHo.watchouts,
       taskIds: newHo.taskIds || [],
       createdAt: new Date().toISOString(),
+      creatorId: auth.currentUser.uid
     };
-    setHandovers([fresh, ...handovers]);
+
+    await addDoc(collection(db, 'handovers'), fresh);
     setStep(3);
   };
 
@@ -172,13 +244,23 @@ export default function HandoverFlow({ handovers, setHandovers, tasks }: Handove
               ))}
             </div>
 
-            <div>
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block mb-2">Critical Watchouts</label>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted block">Critical Watchouts</label>
+                <button 
+                  onClick={handleAIAnalysis}
+                  disabled={activeTasks.length === 0 || isAnalyzing}
+                  className="flex items-center gap-1.5 text-[9px] font-bold text-citrus hover:text-citrus/80 disabled:opacity-30 disabled:cursor-not-allowed transition-all uppercase tracking-widest"
+                >
+                  {isAnalyzing ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+                  <span>Synthesize with AI</span>
+                </button>
+              </div>
               <textarea 
                 value={newHo.watchouts}
                 onChange={(e) => setNewHo({...newHo, watchouts: e.target.value})}
                 placeholder="What must the next team absolutely know?"
-                className="w-full bg-stone/50 border border-dawn rounded-xl px-4 py-3 text-sm font-bold min-h-[100px] focus:outline-none focus:ring-2 focus:ring-citrus/20"
+                className="w-full bg-stone/50 border border-dawn rounded-xl px-4 py-3 text-sm font-bold min-h-[120px] focus:outline-none focus:ring-2 focus:ring-citrus/20 custom-scrollbar"
               />
             </div>
 
