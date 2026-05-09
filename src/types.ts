@@ -1,0 +1,78 @@
+export enum Status {
+  BACKLOG = 'Backlog',
+  IN_PROGRESS = 'In Progress',
+  WAITING = 'Waiting',
+  BLOCKED = 'Blocked',
+  DONE = 'Done',
+}
+
+export enum Priority {
+  LOW = 'Low',
+  MEDIUM = 'Medium',
+  HIGH = 'High',
+}
+
+export enum Shift {
+  MORNING = 'Morning',
+  MID = 'Mid',
+  NIGHT = 'Night',
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  country: string;
+  office: string;
+  team: string;
+  owner: string;
+  shift: Shift;
+  priority: Priority;
+  status: Status;
+  due: string;
+  campaign?: string;
+  details?: string;
+  carry: boolean;
+  dod?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Handover {
+  id: string;
+  date: string;
+  fromShift: Shift;
+  toShift: Shift;
+  fromOffice: string;
+  toOffice: string;
+  outgoing: string;
+  incoming: string;
+  status: 'Pending' | 'Acknowledged';
+  watchouts?: string;
+  taskIds: string[];
+  createdAt: string;
+  ackAt?: string;
+}
+
+export interface Office {
+  id: string;
+  name: string;
+  country: string;
+  lead: string;
+  shift: Shift;
+}
+
+export interface User {
+  name: string;
+  role: string;
+  office: string;
+  country: string;
+}
+
+export interface AppState {
+  theme: 'light' | 'dark';
+  user: User;
+  tasks: Task[];
+  handovers: Handover[];
+  offices: Office[];
+  teams: string[];
+}
