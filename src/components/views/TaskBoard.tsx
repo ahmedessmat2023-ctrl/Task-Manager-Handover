@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Task, Status, Priority, Shift } from '../../types';
-import { Search, Filter, MoreHorizontal, ArrowUpDown, Clock, AlertCircle, CheckCircle2, Plus } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, ArrowUpDown, Clock, AlertCircle, CheckCircle2, Plus, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import TaskModal from '../TaskModal';
 
 interface TaskBoardProps {
@@ -12,6 +13,18 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<keyof Task | 'title'>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: keyof Task | 'title') => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
 
   const filteredTasks = tasks.filter(t => 
     (statusFilter === 'All' || t.status === statusFilter) &&
@@ -19,6 +32,21 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
      t.owner.toLowerCase().includes(filter.toLowerCase()) || 
      t.office.toLowerCase().includes(filter.toLowerCase()))
   );
+
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    let valA: any = a[sortField as keyof Task];
+    let valB: any = b[sortField as keyof Task];
+
+    if (sortField === 'priority') {
+      const weights = { [Priority.HIGH]: 3, [Priority.MEDIUM]: 2, [Priority.LOW]: 1 };
+      valA = weights[a.priority as Priority] || 0;
+      valB = weights[b.priority as Priority] || 0;
+    }
+
+    if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
+  });
 
   const toggleStatus = (id: string) => {
     setTasks(prev => prev.map(t => {
@@ -98,85 +126,207 @@ export default function TaskBoard({ tasks, setTasks }: TaskBoardProps) {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-stone/50 border-b border-dawn">
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Core Outcome</th>
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Identity</th>
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Region</th>
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Priority</th>
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Current State</th>
-                <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted">Commitment</th>
+                <th 
+                  onClick={() => handleSort('title')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Core Outcome</span>
+                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'title' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('owner')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Identity</span>
+                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'owner' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('office')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Region</span>
+                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'office' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('priority')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Priority</span>
+                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'priority' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('status')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Current State</span>
+                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'status' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                  </div>
+                </th>
+                <th 
+                  onClick={() => handleSort('due')}
+                  className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-muted cursor-pointer hover:text-citrus transition-colors group"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Commitment</span>
+                    <ArrowUpDown className={`w-3 h-3 transition-opacity ${sortField === 'due' ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`} />
+                  </div>
+                </th>
                 <th className="px-6 py-4"></th>
               </tr>
             </thead>
             <tbody>
-              {filteredTasks.map((task) => (
-                <tr 
-                  key={task.id} 
-                  className="group hover:bg-stone/30 transition-colors border-b border-dawn last:border-0"
-                >
-                  <td className="px-6 py-5">
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-1 flex-shrink-0 ${task.status === Status.DONE ? 'text-green-500' : 'text-dawn'}`}>
-                        {task.status === Status.DONE ? <CheckCircle2 className="w-4 h-4" /> : <div className="w-4 h-4 border-2 border-current rounded-md" />}
+              {sortedTasks.map((task) => (
+                <React.Fragment key={task.id}>
+                  <tr 
+                    onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                    className={`group hover:bg-stone/30 transition-colors border-b border-dawn last:border-0 cursor-pointer ${expandedTaskId === task.id ? 'bg-stone/20' : ''}`}
+                  >
+                    <td className="px-6 py-5">
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-1 flex-shrink-0 ${task.status === Status.DONE ? 'text-green-500' : 'text-dawn'}`}>
+                          <AnimatePresence mode="wait">
+                            {task.status === Status.DONE ? (
+                              <motion.div
+                                key="done"
+                                initial={{ scale: 0.5, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.5, opacity: 0 }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                              >
+                                <CheckCircle2 className="w-4 h-4" />
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="pending"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                              >
+                                <div className="w-4 h-4 border-2 border-current rounded-md" />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                             <span className={`block text-sm font-bold leading-snug transition-colors ${task.status === Status.DONE ? 'text-muted line-through' : 'text-ink group-hover:text-citrus'}`}>
+                              {task.title}
+                            </span>
+                            {expandedTaskId === task.id ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-muted group-hover:text-citrus" />}
+                          </div>
+                          {task.campaign && (
+                            <span className="inline-block mt-1 text-[9px] font-black uppercase tracking-widest text-muted/60">{task.campaign}</span>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <span className={`block text-sm font-bold leading-snug transition-colors ${task.status === Status.DONE ? 'text-muted line-through' : 'text-ink group-hover:text-citrus'}`}>
-                          {task.title}
-                        </span>
-                        {task.campaign && (
-                          <span className="inline-block mt-1 text-[9px] font-black uppercase tracking-widest text-muted/60">{task.campaign}</span>
-                        )}
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                         <div className="w-6 h-6 bg-dawn rounded-full flex items-center justify-center text-[10px] font-bold text-muted border border-white">
+                          {task.owner.split(' ').map(n => n[0]).join('')}
+                        </div>
+                        <span className="text-xs font-bold text-muted">{task.owner}</span>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex items-center gap-2">
-                       <div className="w-6 h-6 bg-dawn rounded-full flex items-center justify-center text-[10px] font-bold text-muted border border-white">
-                        {task.owner.split(' ').map(n => n[0]).join('')}
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg leading-none">🌍</span>
+                        <span className="text-xs font-bold text-muted">{task.office}</span>
                       </div>
-                      <span className="text-xs font-bold text-muted">{task.owner}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg leading-none">🌍</span>
-                      <span className="text-xs font-bold text-muted">{task.office}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${
-                      task.priority === Priority.HIGH ? 'bg-red-50 text-red-500 border-red-100' : 
-                      task.priority === Priority.MEDIUM ? 'bg-citrus/10 text-citrus border-citrus/20' : 'bg-blue-50 text-blue-500 border-blue-100'
-                    }`}>
-                      {task.priority === Priority.HIGH && <AlertCircle className="w-2.5 h-2.5" />}
-                      {task.priority}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5">
-                    <button 
-                      onClick={() => toggleStatus(task.id)}
-                      className="group/status flex items-center gap-2 hover:bg-slate-soft p-1.5 rounded-lg transition-all"
-                    >
-                      <span className={`block w-1.5 h-1.5 rounded-full ${
-                        task.status === Status.DONE ? 'bg-green-500' : 
-                        task.status === Status.BLOCKED ? 'bg-red-500' :
-                        task.status === Status.IN_PROGRESS ? 'bg-blue-500' :
-                        task.status === Status.WAITING ? 'bg-amber-500' : 'bg-dawn'
-                      }`} />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-muted group-hover/status:text-ink">{task.status}</span>
-                    </button>
-                  </td>
-                  <td className="px-6 py-5">
-                    <div className="flex items-center gap-1.5 text-muted font-bold text-[11px]">
-                      <Clock className="w-3.5 h-3.5 opacity-50" />
-                      <span>{new Date(task.due).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-right">
-                    <button className="p-2 hover:bg-slate-soft rounded-lg transition-colors text-muted opacity-0 group-hover:opacity-100">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-6 py-5">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${
+                        task.priority === Priority.HIGH ? 'bg-red-50 text-red-500 border-red-100' : 
+                        task.priority === Priority.MEDIUM ? 'bg-citrus/10 text-citrus border-citrus/20' : 'bg-blue-50 text-blue-500 border-blue-100'
+                      }`}>
+                        {task.priority === Priority.HIGH && <AlertCircle className="w-2.5 h-2.5" />}
+                        {task.priority}
+                      </span>
+                    </td>
+                    <td className="px-6 py-5" onClick={(e) => e.stopPropagation()}>
+                      <button 
+                        onClick={() => toggleStatus(task.id)}
+                        className="group/status flex items-center gap-2 hover:bg-slate-soft p-1.5 rounded-lg transition-all"
+                      >
+                        <span className={`block w-1.5 h-1.5 rounded-full ${
+                          task.status === Status.DONE ? 'bg-green-500' : 
+                          task.status === Status.BLOCKED ? 'bg-red-500' :
+                          task.status === Status.IN_PROGRESS ? 'bg-blue-500' :
+                          task.status === Status.WAITING ? 'bg-amber-500' : 'bg-dawn'
+                        }`} />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted group-hover/status:text-ink">{task.status}</span>
+                      </button>
+                    </td>
+                    <td className="px-6 py-5">
+                      <div className="flex items-center gap-1.5 text-muted font-bold text-[11px]">
+                        <Clock className="w-3.5 h-3.5 opacity-50" />
+                        <span>{new Date(task.due).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <button className="p-2 hover:bg-slate-soft rounded-lg transition-colors text-muted opacity-0 group-hover:opacity-100">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedTaskId === task.id && (
+                    <tr className="bg-stone/10 border-b border-dawn">
+                      <td colSpan={7} className="px-16 py-6 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="grid grid-cols-3 gap-12">
+                          <div className="col-span-2 space-y-4">
+                            <div>
+                              <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-muted mb-2">Detailed Notes & Context</span>
+                              <p className="text-sm font-medium text-muted leading-relaxed whitespace-pre-wrap">
+                                {task.details || 'No additional notes provided for this outcome.'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="space-y-4">
+                            <div>
+                              <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-muted mb-2">Metadata</span>
+                              <div className="space-y-2">
+                                <div className="flex justify-between text-xs font-bold">
+                                  <span className="text-muted/60">Campaign</span>
+                                  <span className="text-ink">{task.campaign || 'General Ops'}</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-bold">
+                                  <span className="text-muted/60">Executing Team</span>
+                                  <span className="text-ink">{task.team}</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-bold">
+                                  <span className="text-muted/60">Shift Window</span>
+                                  <span className="text-ink">{task.shift}</span>
+                                </div>
+                                <div className="flex justify-between text-xs font-bold">
+                                  <span className="text-muted/60">Created At</span>
+                                  <span className="text-ink">{new Date(task.createdAt).toLocaleDateString('en-GB')}</span>
+                                </div>
+                              </div>
+                            </div>
+                            {task.carry && (
+                              <div className="p-3 bg-citrus/5 border border-citrus/20 rounded-xl">
+                                 <div className="flex items-center gap-2 mb-1">
+                                    <RefreshCw className="w-3 h-3 text-citrus" />
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-citrus">Carry-over Flag</span>
+                                 </div>
+                                 <p className="text-[10px] font-bold text-muted leading-relaxed">This item will be automatically included in the next shift handover.</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
