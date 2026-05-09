@@ -1,5 +1,15 @@
 import { Status, Priority, Shift, Task, Handover, Office, User } from './types';
 
+export const COUNTRY_FLAGS: Record<string, string> = {
+  'KSA': '🇸🇦',
+  'UAE': '🇦🇪',
+  'KW': '🇰🇼',
+  'EG': '🇪🇬',
+  'BH': '🇧🇭',
+  'QA': '🇶🇦',
+  'OM': '🇴🇲',
+};
+
 export const INITIAL_USER: User = {
   name: 'Ahmed Essmat',
   role: 'Regional Operations',

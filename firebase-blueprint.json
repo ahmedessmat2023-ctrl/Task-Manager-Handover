@@ -32,6 +32,17 @@
         "details": { "type": "string" },
         "carry": { "type": "boolean" },
         "dod": { "type": "array", "items": { "type": "string" } },
+        "reminders": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "time": { "type": "string" },
+              "triggered": { "type": "boolean" },
+              "label": { "type": "string" }
+            }
+          }
+        },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" },
         "creatorId": { "type": "string" }
@@ -59,6 +70,32 @@
         "creatorId": { "type": "string" }
       },
       "required": ["date", "fromShift", "toShift", "status", "createdAt", "creatorId"]
+    },
+    "Office": {
+      "title": "Office",
+      "description": "Hub presence location",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "country": { "type": "string" },
+        "lead": { "type": "string" },
+        "shift": { "type": "string", "enum": ["Morning", "Mid", "Night"] }
+      },
+      "required": ["name", "country", "lead", "shift"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System operational logs",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "details": { "type": "object" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["action", "userId", "timestamp"]
     }
   },
   "firestore": {
@@ -73,6 +110,18 @@
     "/handovers/{handoverId}": {
       "schema": "Handover",
       "description": "Shift handovers collection"
+    },
+    "/offices/{officeId}": {
+      "schema": "Office",
+      "description": "Office registry collection"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit logs"
+    },
+    "/settings/{settingId}": {
+      "schema": { "type": "object", "properties": { "name": { "type": "string" } } },
+      "description": "Global system settings"
     }
   }
 }

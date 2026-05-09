@@ -18,6 +18,12 @@ export enum Shift {
   NIGHT = 'Night',
 }
 
+export interface Reminder {
+  time: string;
+  triggered: boolean;
+  label?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -33,6 +39,7 @@ export interface Task {
   details?: string;
   carry: boolean;
   dod?: string[];
+  reminders?: Reminder[];
   createdAt: string;
   updatedAt: string;
   creatorId: string;

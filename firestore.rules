@@ -42,6 +42,14 @@ service cloud.firestore {
              data.creatorId is string;
     }
 
+    function isValidOffice(data) {
+      return data.keys().hasAll(['name', 'country', 'lead', 'shift']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.country is string &&
+             data.lead is string &&
+             data.shift in ['Morning', 'Mid', 'Night'];
+    }
+
     // --- Collections ---
 
     // Users
@@ -56,24 +64,45 @@ service cloud.firestore {
     // Tasks
     match /tasks/{taskId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidTask(incoming()) && incoming().creatorId == request.auth.uid && isValidId(taskId);
+      allow create: if isSignedIn() && isValidTask(incoming()) && (incoming().creatorId == request.auth.uid || request.auth.token.email.matches('.*@gmail.com'));
       allow update: if isSignedIn() && isValidTask(incoming()) && (
         // Creator can update everything
         (existing().creatorId == request.auth.uid && incoming().creatorId == request.auth.uid) ||
+        // Gmail users (admins) can update anything
+        (request.auth.token.email.matches('.*@gmail.com')) ||
         // Others can only update status
         (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && incoming().creatorId == existing().creatorId)
       );
-      allow delete: if isSignedIn() && existing().creatorId == request.auth.uid;
+      allow delete: if isSignedIn() && (existing().creatorId == request.auth.uid || request.auth.token.email.matches('.*@gmail.com'));
     }
 
     // Handovers
     match /handovers/{handoverId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidHandover(incoming()) && incoming().creatorId == request.auth.uid && isValidId(handoverId);
+      allow create: if isSignedIn() && isValidHandover(incoming()) && (incoming().creatorId == request.auth.uid || request.auth.token.email.matches('.*@gmail.com'));
       allow update: if isSignedIn() && isValidHandover(incoming()) && (
         (existing().creatorId == request.auth.uid && incoming().creatorId == request.auth.uid) ||
+        (request.auth.token.email.matches('.*@gmail.com')) ||
         (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'ackAt']) && incoming().creatorId == existing().creatorId)
       );
+    }
+
+    // Offices
+    match /offices/{officeId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn(); // Allow all signed in users to manage offices for now
+    }
+
+    // Audit Logs
+    match /audit_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+    }
+
+    // Settings
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.token.email.matches('.*@gmail.com');
     }
   }
 }

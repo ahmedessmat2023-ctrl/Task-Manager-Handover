@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, CheckSquare, RefreshCw, Globe, MessageSquare, Settings, LogOut } from 'lucide-react';
+import { Home, CheckSquare, RefreshCw, Globe, MessageSquare, Settings, LogOut, TrendingUp } from 'lucide-react';
 import { useFirebase } from './FirebaseContext';
 import { INITIAL_USER } from '../constants';
 
@@ -17,11 +17,17 @@ export default function Sidebar({ activeTab, setActiveTab, stats }: SidebarProps
   const user = appUser || INITIAL_USER;
 
   const menuItems = [
-    { id: 'dashboard', label: 'Main Home', icon: Home, badge: stats.riskCount > 0 ? stats.riskCount : null, badgeColor: 'bg-red-500' },
-    { id: 'tasks', label: 'Daily Tasks', icon: CheckSquare },
+    { section: 'Intelligence' },
+    { id: 'dashboard', label: 'Command Center', icon: Home, badge: stats.riskCount > 0 ? stats.riskCount : null, badgeColor: 'bg-red-500' },
+    { id: 'reports', label: 'Analytics & Reporting', icon: TrendingUp },
+    { section: 'Operations' },
+    { id: 'tasks', label: 'Task Register', icon: CheckSquare },
     { id: 'handover', label: 'Shift Handover', icon: RefreshCw, badge: stats.handoverCount > 0 ? stats.handoverCount : null, badgeColor: 'bg-citrus' },
-    { id: 'offices', label: 'Regional View', icon: Globe },
-    { id: 'ai', label: 'AI Copilot', icon: MessageSquare },
+    { id: 'offices', label: 'Office Presence', icon: Globe },
+    { section: 'Studio' },
+    { id: 'ai', label: 'AI Studio', icon: MessageSquare },
+    { section: 'System' },
+    { id: 'settings', label: 'Settings & Config', icon: Settings },
   ];
 
   return (
@@ -36,29 +42,39 @@ export default function Sidebar({ activeTab, setActiveTab, stats }: SidebarProps
         </div>
       </div>
 
-      <nav className="flex-1 space-y-2">
-        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted/60 mb-4 px-3">Primary Flows</div>
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 group ${
-              activeTab === item.id 
-                ? 'bg-ink text-white font-bold shadow-lg shadow-ink/10' 
-                : 'text-muted hover:bg-stone/80 hover:text-ink font-semibold'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <item.icon className={`w-5 h-5 ${activeTab === item.id ? 'text-citrus' : 'text-muted group-hover:text-ink'}`} />
-              <span className="text-sm">{item.label}</span>
-            </div>
-            {item.badge && (
-              <span className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold text-white rounded-full ${item.badgeColor}`}>
-                {item.badge}
-              </span>
-            )}
-          </button>
-        ))}
+      <nav className="flex-1 space-y-1">
+        {menuItems.map((item, idx) => {
+          if ('section' in item) {
+            return (
+              <div key={`section-${idx}`} className="text-[9px] font-black uppercase tracking-[0.2em] text-muted/60 mt-6 mb-2 ml-3">
+                {item.section}
+              </div>
+            );
+          }
+          
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200 group ${
+                activeTab === item.id 
+                  ? 'bg-ink text-white font-bold shadow-lg shadow-ink/10' 
+                  : 'text-muted hover:bg-stone/80 hover:text-ink font-semibold'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Icon className={`w-4.5 h-4.5 ${activeTab === item.id ? 'text-citrus' : 'text-muted group-hover:text-ink'}`} />
+                <span className="text-xs">{item.label}</span>
+              </div>
+              {item.badge && (
+                <span className={`px-1.5 min-w-[18px] h-[18px] flex items-center justify-center text-[9px] font-black text-white rounded-md ${item.badgeColor} shadow-sm animate-pulse`}>
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </nav>
 
       <div className="mt-auto pt-6 space-y-6">

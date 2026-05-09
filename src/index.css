@@ -19,8 +19,30 @@
 }
 
 @layer base {
+  :root[data-theme='flow'] {
+    --color-stone: #F5F5F7;
+    --color-ink: #1C1C1E;
+    --color-citrus: #F28C33;
+    --color-dawn: #E5E7EB;
+  }
+
+  :root[data-theme='tech'] {
+    --color-stone: #0A0A0B;
+    --color-ink: #E0E0E0;
+    --color-citrus: #00F0FF;
+    --color-dawn: #1A1A1C;
+    --color-muted: #888888;
+  }
+
+  :root[data-theme='minimal'] {
+    --color-stone: #FFFFFF;
+    --color-ink: #000000;
+    --color-citrus: #333333;
+    --color-dawn: #EEEEEE;
+  }
+
   body {
-    @apply bg-stone text-ink font-sans antialiased;
+    @apply bg-stone text-ink font-sans antialiased transition-colors duration-500;
   }
 }
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { X, Calendar, User, MapPin, Flag, Zap, Info, Sparkles, Loader2, Megaphone, Users, Mail, Check, AlertCircle as AlertIcon, Globe, Plus } from 'lucide-react';
-import { Task, Status, Priority, Shift } from '../types';
+import { X, Calendar, User, MapPin, Flag, Zap, Info, Sparkles, Loader2, Megaphone, Users, Mail, Check, AlertCircle as AlertIcon, Globe, Plus, Bell, Trash2 as TrashIcon, Clock } from 'lucide-react';
+import { Task, Status, Priority, Shift, Reminder } from '../types';
 import { OFFICES, TEAMS } from '../constants';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
@@ -12,11 +12,15 @@ interface TaskModalProps {
 }
 
 const KNOWN_USERS = [
-  { name: 'Ahmed Essmat', email: 'ahmed@ops.com' },
-  { name: 'Mona KSA', email: 'mona@ksa.ops' },
-  { name: 'Nour UAE', email: 'nour@uae.ops' },
-  { name: 'Fahad KW', email: 'fahad@kw.ops' },
+  { name: 'Ahmed Essmat', email: 'ahmed@ops.com', role: 'Operations Lead' },
+  { name: 'Mona KSA', email: 'mona@ksa.ops', role: 'Regional Manager' },
+  { name: 'Nour UAE', email: 'nour@uae.ops', role: 'Logistics Head' },
+  { name: 'Fahad KW', email: 'fahad@kw.ops', role: 'Support Analyst' },
+  { name: 'Sara Qat', email: 'sara@qat.ops', role: 'Supply Chain' },
+  { name: 'Omar Egy', email: 'omar@egy.ops', role: 'Fleet Manager' },
 ];
+
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 export default function TaskModal({ isOpen, onClose, onSave }: TaskModalProps) {
   const [form, setForm] = useState<Partial<Task>>({
@@ -32,24 +36,28 @@ export default function TaskModal({ isOpen, onClose, onSave }: TaskModalProps) {
     due: new Date(Date.now() + 86400000).toISOString().slice(0, 16),
     carry: false,
     details: '',
+    reminders: [],
   });
+
+  const [reminderTime, setReminderTime] = useState(new Date(Date.now() + 3600000).toISOString().slice(0, 16));
 
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const emailError = useMemo(() => {
     if (!form.owner) return null;
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!re.test(form.owner)) return 'Invalid email format';
+    if (!EMAIL_REGEX.test(form.owner)) return 'Please enter a valid business email address';
     return null;
   }, [form.owner]);
 
   const suggestions = useMemo(() => {
-    if (!form.owner || form.owner.includes('@')) return [];
+    const input = form.owner?.toLowerCase() || '';
+    if (!input || input.includes('@')) return [];
+    
     return KNOWN_USERS.filter(u => 
-      u.name.toLowerCase().includes(form.owner!.toLowerCase()) ||
-      u.email.toLowerCase().includes(form.owner!.toLowerCase())
-    );
+      u.name.toLowerCase().includes(input) ||
+      u.email.toLowerCase().includes(input)
+    ).slice(0, 4);
   }, [form.owner]);
 
   if (!isOpen) return null;
@@ -192,28 +200,44 @@ export default function TaskModal({ isOpen, onClose, onSave }: TaskModalProps) {
                       <Mail className="w-3 h-3" />
                       <span>Owner Email</span>
                     </div>
-                    {form.owner && !emailError && <Check className="w-3 h-3 text-green-500" />}
+                    {form.owner && !emailError && (
+                      <motion.div 
+                        initial={{ scale: 0 }} 
+                        animate={{ scale: 1 }} 
+                        className="flex items-center gap-1 text-[9px] font-bold text-green-600 uppercase tracking-widest"
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>Verified Format</span>
+                      </motion.div>
+                    )}
                   </label>
-                  <div className="relative">
+                  <div className="relative group/owner">
                     <input 
-                      type="text"
+                      type="email"
                       placeholder="assignee@company.com"
                       value={form.owner}
                       onFocus={() => setShowSuggestions(true)}
                       onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                       onChange={e => setForm({...form, owner: e.target.value})}
                       className={`w-full bg-stone/50 border rounded-xl px-4 py-3 text-sm font-bold outline-none transition-all ${
-                        emailError ? 'border-red-500 shadow-sm shadow-red-500/10' : 'border-dawn focus:border-citrus'
+                        emailError 
+                          ? 'border-red-500 shadow-sm shadow-red-500/10' 
+                          : form.owner && !emailError 
+                            ? 'border-green-500/50 focus:border-green-500' 
+                            : 'border-dawn focus:border-citrus'
                       }`}
                     />
                     <AnimatePresence>
                       {showSuggestions && suggestions.length > 0 && (
                         <motion.div 
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0 }}
-                          className="absolute z-10 w-full mt-2 bg-white border border-dawn rounded-xl shadow-xl overflow-hidden"
+                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          className="absolute z-20 w-full mt-2 bg-white border border-dawn rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl"
                         >
+                          <div className="px-4 py-2 bg-stone/50 border-b border-dawn">
+                            <span className="text-[10px] font-black text-muted uppercase tracking-widest">Suggested Accounts</span>
+                          </div>
                           {suggestions.map(u => (
                             <button
                               key={u.email}
@@ -222,11 +246,20 @@ export default function TaskModal({ isOpen, onClose, onSave }: TaskModalProps) {
                                 setForm({...form, owner: u.email});
                                 setShowSuggestions(false);
                               }}
-                              className="w-full px-4 py-3 text-left hover:bg-stone transition-colors flex items-center justify-between group"
+                              className="w-full px-4 py-3 text-left hover:bg-citrus/5 transition-all flex items-center justify-between group active:scale-[0.98]"
                             >
-                              <div>
-                                <span className="block text-xs font-bold text-ink">{u.name}</span>
-                                <span className="text-[10px] text-muted">{u.email}</span>
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-citrus/10 flex items-center justify-center text-citrus text-[10px] font-bold">
+                                  {u.name.split(' ').map(n => n[0]).join('')}
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="block text-xs font-bold text-ink truncate">{u.name}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-muted truncate">{u.email}</span>
+                                    <span className="w-1 h-1 rounded-full bg-stone" />
+                                    <span className="text-[10px] text-citrus/60 font-semibold truncate">{u.role}</span>
+                                  </div>
+                                </div>
                               </div>
                               <Plus className="w-3 h-3 text-citrus opacity-0 group-hover:opacity-100 transition-opacity" />
                             </button>
@@ -348,6 +381,58 @@ export default function TaskModal({ isOpen, onClose, onSave }: TaskModalProps) {
                 placeholder="Provide any additional context, background, or detailed notes for this outcome..."
                 className="w-full bg-stone/50 border border-dawn rounded-2xl px-6 py-4 text-sm font-medium focus:border-citrus outline-none min-h-[100px]"
               />
+            </div>
+
+            <div className="space-y-4 p-6 bg-amber-50/30 rounded-2xl border border-amber-100">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-700 flex items-center gap-2">
+                <Bell className="w-3 h-3" />
+                <span>Operational Reminders</span>
+              </label>
+              
+              <div className="flex gap-2">
+                <input 
+                  type="datetime-local"
+                  value={reminderTime}
+                  onChange={e => setReminderTime(e.target.value)}
+                  className="flex-1 bg-white border border-amber-100 rounded-xl px-4 py-2 text-xs font-bold focus:border-amber-400 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newReminder: Reminder = { time: reminderTime, triggered: false };
+                    setForm({...form, reminders: [...(form.reminders || []), newReminder]});
+                  }}
+                  className="px-4 py-2 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 transition-colors shadow-sm"
+                >
+                  Add Reminder
+                </button>
+              </div>
+
+              {form.reminders && form.reminders.length > 0 && (
+                <div className="space-y-2 mt-4">
+                  {form.reminders.map((r, i) => (
+                    <div key={i} className="flex items-center justify-between bg-white px-4 py-2 rounded-lg border border-amber-50 shadow-sm animate-in fade-in slide-in-from-left-2">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-3 h-3 text-amber-500" />
+                        <span className="text-xs font-bold text-amber-900">
+                          {new Date(r.time).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newReminders = [...(form.reminders || [])];
+                          newReminders.splice(i, 1);
+                          setForm({...form, reminders: newReminders});
+                        }}
+                        className="p-1.5 text-amber-300 hover:text-red-500 transition-colors"
+                      >
+                        <TrashIcon className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </form>
 

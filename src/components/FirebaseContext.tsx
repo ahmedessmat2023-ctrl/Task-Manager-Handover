@@ -17,7 +17,7 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
-import { Task, Handover, User as AppUser, Status } from '../types';
+import { Task, Handover, User as AppUser, Status, Office } from '../types';
 
 interface FirebaseContextType {
   user: FirebaseUser | null;
@@ -25,6 +25,7 @@ interface FirebaseContextType {
   loading: boolean;
   tasks: Task[];
   handovers: Handover[];
+  offices: Office[];
   login: () => Promise<void>;
   logout: () => Promise<void>;
   isReady: boolean;
@@ -37,6 +38,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [handovers, setHandovers] = useState<Handover[]>([]);
+  const [offices, setOffices] = useState<Office[]>([]);
   const [loading, setLoading] = useState(true);
   const [isReady, setIsReady] = useState(false);
 
@@ -111,9 +113,18 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
       handleFirestoreError(error, 'list' as any, 'handovers');
     });
 
+    const officesQuery = query(collection(db, 'offices'), orderBy('name', 'asc'));
+    const unsubscribeOffices = onSnapshot(officesQuery, (snapshot) => {
+      const officeList = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Office));
+      setOffices(officeList);
+    }, (error) => {
+      handleFirestoreError(error, 'list' as any, 'offices');
+    });
+
     return () => {
       unsubscribeTasks();
       unsubscribeHandovers();
+      unsubscribeOffices();
     };
   }, [user]);
 
@@ -137,7 +148,7 @@ export function FirebaseProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <FirebaseContext.Provider value={{ user, appUser, loading, tasks, handovers, login, logout, isReady }}>
+    <FirebaseContext.Provider value={{ user, appUser, loading, tasks, handovers, offices, login, logout, isReady }}>
       {children}
     </FirebaseContext.Provider>
   );

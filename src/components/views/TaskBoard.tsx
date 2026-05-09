@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Task, Status, Priority, Shift } from '../../types';
-import { Search, Filter, MoreHorizontal, ArrowUpDown, Clock, AlertCircle, CheckCircle2, Plus, ChevronDown, ChevronUp, RefreshCw, Trash2, UserPlus, CheckSquare, Square, X, Loader2 } from 'lucide-react';
+import { Search, Filter, MoreHorizontal, ArrowUpDown, Clock, AlertCircle, CheckCircle2, Plus, ChevronDown, ChevronUp, RefreshCw, Trash2, UserPlus, CheckSquare, Square, X, Loader2, Bell, LayoutGrid, List, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import TaskModal from '../TaskModal';
 import { db, auth } from '../../lib/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
-import { TEAMS } from '../../constants';
+import { COUNTRY_FLAGS, TEAMS } from '../../constants';
+
+import { logAction, ActionType } from '../../lib/auditLogger';
 
 interface TaskBoardProps {
   tasks: Task[];
@@ -15,6 +17,7 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
   const [filter, setFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortField, setSortField] = useState<keyof Task | 'title'>('createdAt');
@@ -83,6 +86,7 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
       batch.update(ref, { status, updatedAt: new Date().toISOString() });
     });
     await batch.commit();
+    await logAction(ActionType.TASK_UPDATE, { count: selectedIds.length, type: 'status', value: status });
     setSelectedIds([]);
     setIsProcessing(false);
   };
@@ -95,6 +99,7 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
       batch.update(ref, { priority, updatedAt: new Date().toISOString() });
     });
     await batch.commit();
+    await logAction(ActionType.TASK_UPDATE, { count: selectedIds.length, type: 'priority', value: priority });
     setSelectedIds([]);
     setIsProcessing(false);
   };
@@ -108,6 +113,7 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
         batch.delete(ref);
       });
       await batch.commit();
+      await logAction(ActionType.TASK_DELETE, { count: selectedIds.length });
       setSelectedIds([]);
       setIsProcessing(false);
     }
@@ -125,6 +131,14 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
     setIsProcessing(false);
   };
 
+  const updateStatus = async (id: string, status: Status) => {
+    const ref = doc(db, 'tasks', id);
+    await updateDoc(ref, { 
+      status, 
+      updatedAt: new Date().toISOString() 
+    });
+  };
+
   const toggleStatus = async (id: string, currentStatus: Status) => {
     const statuses = Object.values(Status);
     const currentIndex = statuses.indexOf(currentStatus);
@@ -140,7 +154,7 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
   const handleSaveTask = async (taskData: Partial<Task>) => {
     if (!auth.currentUser) return;
 
-    await addDoc(collection(db, 'tasks'), {
+    const data = {
       ...taskData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -150,7 +164,10 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
       status: taskData.status || Status.BACKLOG,
       priority: taskData.priority || Priority.MEDIUM,
       owner: taskData.owner || auth.currentUser.email
-    });
+    };
+
+    await addDoc(collection(db, 'tasks'), data);
+    await logAction(ActionType.TASK_CREATE, { title: data.title });
   };
 
   return (
@@ -180,6 +197,21 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
         </div>
         
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 bg-white border border-dawn rounded-xl p-1 shadow-sm">
+            <button 
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-ink text-white shadow-sm' : 'text-muted hover:text-ink'}`}
+            >
+              <List className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={() => setViewMode('kanban')}
+              className={`p-1.5 rounded-lg transition-all ${viewMode === 'kanban' ? 'bg-ink text-white shadow-sm' : 'text-muted hover:text-ink'}`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
             <input 
@@ -200,7 +232,108 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
         </div>
       </div>
 
-      <div className="bg-white border border-dawn rounded-2xl overflow-hidden shadow-sm">
+      {viewMode === 'kanban' ? (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 h-[calc(100vh-280px)] min-h-[600px]">
+          {Object.values(Status).map(status => {
+            const laneTasks = sortedTasks.filter(t => t.status === status);
+            return (
+              <div key={status} className="flex flex-col h-full bg-stone/40 rounded-3xl border border-dawn/50 p-4">
+                <div className="flex items-center justify-between mb-4 px-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${
+                      status === Status.DONE ? 'bg-green-500' : 
+                      status === Status.BLOCKED ? 'bg-red-500' :
+                      status === Status.IN_PROGRESS ? 'bg-blue-500' :
+                      status === Status.WAITING ? 'bg-amber-500' : 'bg-dawn'
+                    }`} />
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-ink">{status}</h4>
+                    <span className="px-1.5 py-0.5 bg-white border border-dawn rounded-md text-[8px] font-bold text-muted">{laneTasks.length}</span>
+                  </div>
+                  <button className="p-1 text-muted hover:text-citrus transition-colors">
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto space-y-3 custom-scrollbar pr-1">
+                  {laneTasks.map(task => (
+                    <motion.div 
+                      layoutId={task.id}
+                      key={task.id}
+                      onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                      className={`relative bg-white border-l-4 rounded-2xl shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden ${
+                        task.priority === Priority.HIGH ? 'border-l-red-500' : 
+                        task.priority === Priority.MEDIUM ? 'border-l-amber-500' : 'border-l-blue-500'
+                      } ${expandedTaskId === task.id ? 'ring-2 ring-citrus/20' : 'border-dawn'}`}
+                    >
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <span className={`text-[11px] font-bold leading-tight ${task.status === Status.DONE ? 'text-muted line-through' : 'text-ink'}`}>
+                            {task.title}
+                          </span>
+                          <span className="text-sm flex-shrink-0">{COUNTRY_FLAGS[task.country] || '🌍'}</span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3">
+                          <div className="flex items-center gap-1">
+                            <MapPin className="w-2.5 h-2.5 text-muted opacity-50" />
+                            <span className="text-[9px] font-bold text-muted uppercase tracking-tighter">{task.office}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-2.5 h-2.5 text-muted opacity-50" />
+                            <span className="text-[9px] font-bold text-muted">{new Date(task.due).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between mt-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 bg-stone border border-dawn rounded-full flex items-center justify-center text-[8px] font-black text-muted">
+                              {task.owner.split(' ').map(n => n[0]).join('')}
+                            </div>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-muted/60">{task.shift}</span>
+                          </div>
+                          <div className="flex gap-1.5">
+                            {task.carry && (
+                              <div className="w-4 h-4 bg-citrus/10 text-citrus rounded-md flex items-center justify-center border border-citrus/20" title="Carry-over">
+                                <RefreshCw className="w-2.5 h-2.5" />
+                              </div>
+                            )}
+                            {task.reminders && task.reminders.length > 0 && (
+                              <div className="w-4 h-4 bg-amber-50 text-amber-500 rounded-md flex items-center justify-center border border-amber-100" title="Reminders active">
+                                <Bell className="w-2.5 h-2.5" />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1 mt-4 border-t border-stone pt-2">
+                          {Object.values(Status).filter(s => s !== task.status).slice(0, 2).map(nextStatus => (
+                            <button
+                              key={nextStatus}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateStatus(task.id, nextStatus as Status);
+                              }}
+                              className="px-2 py-1 bg-stone/50 hover:bg-dawn rounded text-[8px] font-black uppercase tracking-tighter text-muted hover:text-ink transition-colors text-center"
+                            >
+                              Move to {nextStatus}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                  {laneTasks.length === 0 && (
+                    <div className="p-4 text-center border-2 border-dashed border-dawn/30 rounded-2xl">
+                      <span className="text-[9px] font-black uppercase tracking-widest text-muted/40 italic">Lane Clear</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-white border border-dawn rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -387,6 +520,12 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
                              <span className={`block text-sm font-bold leading-snug transition-colors ${task.status === Status.DONE ? 'text-muted line-through' : 'text-ink group-hover:text-citrus'}`}>
                               {task.title}
                             </span>
+                            {task.reminders && task.reminders.length > 0 && (
+                              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 rounded border border-amber-100">
+                                <Bell className="w-2.5 h-2.5 text-amber-500" />
+                                <span className="text-[8px] font-black text-amber-600">{task.reminders.length}</span>
+                              </div>
+                            )}
                             {expandedTaskId === task.id ? <ChevronUp className="w-3 h-3 text-citrus" /> : <ChevronDown className="w-3 h-3 text-muted group-hover:text-citrus" />}
                           </div>
                           {task.campaign && (
@@ -497,6 +636,25 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
                                  <p className="text-[10px] font-bold text-muted leading-relaxed">This item will be automatically included in the next shift handover.</p>
                               </div>
                             )}
+                            
+                            {task.reminders && task.reminders.length > 0 && (
+                              <div className="space-y-2">
+                                <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-muted">Active Reminders</span>
+                                <div className="space-y-1.5">
+                                  {task.reminders.map((r, i) => (
+                                    <div key={i} className={`flex items-center justify-between p-2 rounded-lg border ${r.triggered ? 'bg-stone/20 border-dawn opacity-50' : 'bg-amber-50/50 border-amber-100'}`}>
+                                      <div className="flex items-center gap-2">
+                                        <Clock className="w-3 h-3 text-amber-500" />
+                                        <span className="text-[10px] font-bold text-ink">
+                                          {new Date(r.time).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                      </div>
+                                      {r.triggered && <span className="text-[8px] font-black uppercase text-muted tracking-widest">Triggered</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -518,6 +676,7 @@ export default function TaskBoard({ tasks }: TaskBoardProps) {
           )}
         </div>
       </div>
+      )}
       
       <div className="flex items-center justify-between text-xs font-bold px-4">
         <span className="text-muted">Displaying <span className="text-ink">{filteredTasks.length}</span> of <span className="text-ink">{tasks.length}</span> total daily outcomes.</span>
